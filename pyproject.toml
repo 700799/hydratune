@@ -33,13 +33,13 @@ dependencies = [
 
 [project.optional-dependencies]
 train = [
-    "torch>=2.2",
-    "transformers>=4.41",
-    "trl>=0.9",
-    "peft>=0.11",
-    "accelerate>=0.30",
+    "torch>=2.4",
+    "transformers>=4.56",
+    "trl>=0.21",
+    "peft>=0.15",
+    "accelerate>=1.0",
     "bitsandbytes>=0.43",
-    "datasets>=2.19",
+    "datasets>=3.0",
     "sentencepiece>=0.2",
 ]
 dev = [

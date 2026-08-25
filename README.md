@@ -122,6 +122,21 @@ pytest
 ruff check .
 ```
 
+### End-to-end smoke test
+
+`scripts/run_test.py` exercises the whole pipeline — Pydantic config load,
+dummy-dataset generation, chat-template rendering, TRL `SFTTrainer`, adapter
+save — against `HuggingFaceTB/SmolLM2-135M-Instruct` with LoRA. It finishes
+in well under 30 seconds on CPU once the model is in the local HF cache:
+
+```bash
+pip install -e ".[train]"
+python scripts/run_test.py            # uses configs/test_smollm2.yaml
+```
+
+A `PASS` line with the adapter path and elapsed time means the harness is
+healthy end to end.
+
 ## License
 
 Apache-2.0

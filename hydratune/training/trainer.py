@@ -12,10 +12,12 @@ tokenizer, dataset, or GPU: chat-template compatibility and OOM handling.
 
 from __future__ import annotations
 
+import math
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from hydratune.config.schema import HydraTuneConfig
+from hydratune.config.schema import HydraTuneConfig, TrainingConfig
 from hydratune.data.chat_templates import resolve_chat_template
 from hydratune.data.formatting import to_messages
 from hydratune.utils.errors import ChatTemplateError, DatasetError, OOMRiskError
@@ -115,7 +117,7 @@ def load_model(config: HydraTuneConfig) -> PreTrainedModel:
     model_kwargs: dict[str, Any] = {
         "revision": config.base_model.revision,
         "trust_remote_code": config.base_model.trust_remote_code,
-        "torch_dtype": torch_dtype,
+        "dtype": torch_dtype,
     }
     if config.hardware.flash_attention:
         model_kwargs["attn_implementation"] = "flash_attention_2"
@@ -158,6 +160,28 @@ def build_peft_config(config: HydraTuneConfig) -> Any | None:
     )
 
 
+def resolve_warmup_steps(training: TrainingConfig, num_train_records: int) -> int:
+    """Translate ``warmup_ratio`` into a concrete step count.
+
+    Transformers 5 dropped ``warmup_ratio`` from ``TrainingArguments``, so the
+    ratio is converted here from the estimated total optimizer updates. With
+    ``packing`` enabled the record count overestimates the number of packed
+    sequences, so the resulting warmup errs slightly long — acceptable for a
+    warmup heuristic.
+    """
+    if training.warmup_ratio == 0.0:
+        return training.warmup_steps
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    records_per_update = training.batch_size * training.gradient_accumulation_steps * world_size
+    updates_per_epoch = math.ceil(num_train_records / records_per_update)
+    total_updates = (
+        training.max_steps
+        if training.max_steps is not None
+        else math.ceil(updates_per_epoch * training.epochs)
+    )
+    return max(1, round(total_updates * training.warmup_ratio))
+
+
 def run_training(config: HydraTuneConfig) -> Path:
     """Execute a full SFT run and return the output directory."""
     import torch
@@ -175,13 +199,12 @@ def run_training(config: HydraTuneConfig) -> Path:
         max_steps=training.max_steps if training.max_steps is not None else -1,
         per_device_train_batch_size=training.batch_size,
         gradient_accumulation_steps=training.gradient_accumulation_steps,
-        warmup_steps=training.warmup_steps,
-        warmup_ratio=training.warmup_ratio,
+        warmup_steps=resolve_warmup_steps(training, len(train_dataset)),
         lr_scheduler_type=training.lr_scheduler,
         optim=training.optimizer,
         weight_decay=training.weight_decay,
         max_grad_norm=training.max_grad_norm,
-        max_seq_length=training.max_seq_length,
+        max_length=training.max_seq_length,
         packing=training.packing,
         dataset_text_field="text",
         logging_steps=training.logging_steps,
@@ -193,7 +216,7 @@ def run_training(config: HydraTuneConfig) -> Path:
         bf16=config.hardware.bf16,
         fp16=config.hardware.fp16,
         gradient_checkpointing=config.hardware.gradient_checkpointing,
-        report_to=None if training.report_to == "none" else training.report_to,
+        report_to=training.report_to,
     )
 
     trainer = SFTTrainer(
