@@ -92,11 +92,10 @@ def load_datasets(
 
         def render(record: dict[str, Any]) -> dict[str, str]:
             messages = to_messages(record, dataset_config.format)
-            return {
-                "text": tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=False
-                )
-            }
+            rendered = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
+            return {"text": str(rendered)}
 
         dataset = dataset.map(render, remove_columns=dataset.column_names, desc="Rendering")
 

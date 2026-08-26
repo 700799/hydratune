@@ -114,3 +114,70 @@ def test_empty_target_modules_rejected() -> None:
         HydraTuneConfig.model_validate(
             minimal_config(peft={"adapter": "lora", "target_modules": []})
         )
+
+
+def test_root_level_unknown_section_rejected() -> None:
+    with pytest.raises(ValidationError, match="evaluation"):
+        HydraTuneConfig.model_validate(minimal_config(evaluation={"metric": "loss"}))
+
+
+def test_fp16_dtype_computed() -> None:
+    config = HydraTuneConfig.model_validate(
+        minimal_config(hardware={"bf16": False, "fp16": True})
+    )
+    assert config.torch_dtype == "float16"
+
+
+def test_full_precision_dtype_computed() -> None:
+    config = HydraTuneConfig.model_validate(
+        minimal_config(hardware={"bf16": False, "fp16": False})
+    )
+    assert config.torch_dtype == "float32"
+
+
+def test_qlora_with_fp16_is_accepted() -> None:
+    config = HydraTuneConfig.model_validate(
+        minimal_config(
+            peft={"adapter": "qlora"},
+            hardware={"bf16": False, "fp16": True},
+        )
+    )
+    assert config.is_quantized
+
+
+def test_effective_batch_size() -> None:
+    config = HydraTuneConfig.model_validate(
+        minimal_config(training={"batch_size": 4, "gradient_accumulation_steps": 8})
+    )
+    assert config.training.effective_batch_size == 32
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("data/train.jsonl", True),
+        ("data/train.JSON", True),
+        ("data/train.csv", True),
+        ("data/train.parquet", True),
+        ("yahma/alpaca-cleaned", False),
+        ("some-dataset-id", False),
+    ],
+)
+def test_is_local_file_detection(path: str, expected: bool) -> None:
+    config = HydraTuneConfig.model_validate(minimal_config(dataset={"path": path}))
+    assert config.dataset.is_local_file is expected
+
+
+def test_conversational_format_requires_template() -> None:
+    with pytest.raises(ValidationError, match="chat_template is required"):
+        HydraTuneConfig.model_validate(
+            minimal_config(
+                dataset={"path": "d.jsonl", "format": "sharegpt", "chat_template": None}
+            )
+        )
+
+
+def test_config_round_trips_through_dump() -> None:
+    original = HydraTuneConfig.model_validate(minimal_config(peft={"adapter": "qlora"}))
+    restored = HydraTuneConfig.model_validate(original.model_dump(exclude={"torch_dtype"}))
+    assert restored == original

@@ -87,3 +87,50 @@ def test_export_is_a_stub(tmp_path: Path) -> None:
 def test_missing_config_file(missing: str) -> None:
     result = runner.invoke(app, ["validate", "--config", missing])
     assert result.exit_code != 0
+
+
+def test_version_flag() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert "hydratune" in result.output
+
+
+def test_no_args_shows_help() -> None:
+    result = runner.invoke(app, [])
+    assert "train" in result.output
+    assert "validate" in result.output
+
+
+def test_validate_skips_dataset_check_when_disabled(tmp_path: Path) -> None:
+    config = write_config(tmp_path, str(tmp_path / "does_not_exist.jsonl"))
+    result = runner.invoke(app, ["validate", "--config", str(config), "--no-check-dataset"])
+    assert result.exit_code == 0, result.output
+    assert "Dataset" not in result.output.split("└")[-1]
+
+
+def test_validate_openai_format_dataset(tmp_path: Path) -> None:
+    dataset = tmp_path / "chat.jsonl"
+    dataset.write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "user", "content": "Hi"},
+                    {"role": "assistant", "content": "Hello"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = write_config(tmp_path, str(dataset), format="openai")
+    result = runner.invoke(app, ["validate", "--config", str(config)])
+    assert result.exit_code == 0, result.output
+    assert "Dataset OK" in result.output
+
+
+def test_validate_reports_empty_dataset(tmp_path: Path) -> None:
+    dataset = tmp_path / "data.jsonl"
+    dataset.write_text("", encoding="utf-8")
+    config = write_config(tmp_path, str(dataset))
+    result = runner.invoke(app, ["validate", "--config", str(config)])
+    assert result.exit_code == 1
+    assert "no records" in result.output

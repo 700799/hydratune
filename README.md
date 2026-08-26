@@ -118,9 +118,16 @@ hydratune/
 
 ```bash
 pip install -e ".[dev]"
-pytest
-ruff check .
+pytest            # unit tests; integration tests skip without the [train] extra
+ruff check .      # lint
+mypy              # strict type-checking of the package
 ```
+
+With the `[train]` extra installed, `pytest` additionally runs integration
+tests that build a tiny local Llama checkpoint and drive the real
+`SFTTrainer` pipeline end to end (no network needed). CI runs lint,
+strict mypy, the unit suite on Python 3.10–3.12, and the integration suite
+on CPU-only torch.
 
 ### End-to-end smoke test
 

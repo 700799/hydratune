@@ -135,7 +135,7 @@ def inspect_local_dataset(config: DatasetConfig, sample_size: int = 5) -> list[s
     problems: list[str] = []
     try:
         records = list(_iter_head_records(path, sample_size))
-    except (json.JSONDecodeError, DatasetError, UnicodeDecodeError) as exc:
+    except (json.JSONDecodeError, csv.Error, DatasetError, UnicodeDecodeError, OSError) as exc:
         return [f"could not read {path.name}: {exc}"]
 
     if not records:

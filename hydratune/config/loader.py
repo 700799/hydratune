@@ -41,6 +41,8 @@ def load_config(path: str | Path) -> HydraTuneConfig:
         raw: Any = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         raise ConfigError(f"Config file is not valid YAML: {path}\n{exc}") from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ConfigError(f"Config file could not be read: {path}\n{exc}") from exc
 
     if raw is None:
         raise ConfigError(f"Config file is empty: {path}")

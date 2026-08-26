@@ -74,7 +74,9 @@ def write_dummy_dataset(config: HydraTuneConfig) -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description="End-to-end smoke test for the HydraTune training pipeline."
+    )
     parser.add_argument(
         "--config",
         type=Path,
