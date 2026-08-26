@@ -71,10 +71,19 @@ python_version = "3.10"
 strict = true
 files = ["hydratune"]
 
-# Heavy ML libraries are untyped (or lazily re-export); treat them as opaque
-# boundaries rather than weakening strictness for our own code.
+# Heavy ML libraries are opaque typing boundaries: they may be absent (base
+# install), untyped, or lazily re-exporting, and their APIs drift between
+# versions. Skipping them keeps mypy results identical with or without the
+# [train] extra installed, without weakening strictness for our own code.
 [[tool.mypy.overrides]]
-module = ["datasets", "datasets.*", "trl", "trl.*"]
+module = [
+    "datasets", "datasets.*",
+    "trl", "trl.*",
+    "torch", "torch.*",
+    "transformers", "transformers.*",
+    "peft", "peft.*",
+    "bitsandbytes", "bitsandbytes.*",
+]
 ignore_missing_imports = true
 follow_imports = "skip"
 
