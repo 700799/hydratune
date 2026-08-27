@@ -11,6 +11,7 @@ Heavy training dependencies (torch, TRL, PEFT) are imported only inside
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from typing import Annotated
 
@@ -61,6 +62,33 @@ def main(
     """YAML-configurable LLM fine-tuning harness."""
 
 
+#: Modules the `[train]` extra provides. Commands that need them check up
+#: front rather than relying on a try/except around the import: the heavy
+#: imports live inside functions in trainer.py/merge.py, so importing those
+#: modules succeeds on a base install and the real ImportError only surfaces
+#: mid-run as an unhandled traceback.
+_TRAINING_MODULES = ("torch", "transformers", "trl", "peft")
+
+
+def _missing_training_modules() -> list[str]:
+    """Return the `[train]` modules that are not importable."""
+    return [name for name in _TRAINING_MODULES if importlib.util.find_spec(name) is None]
+
+
+def _require_training_extras() -> None:
+    """Exit with an actionable message when the `[train]` extra is missing."""
+    missing = _missing_training_modules()
+    if missing:
+        # markup=False: rich would otherwise parse "[train]" as a style tag and
+        # print the wrong install command.
+        error_console.print(
+            f"Training dependencies are not installed (missing: {', '.join(missing)}).\n"
+            'Install them with: pip install "hydratune[train]"',
+            markup=False,
+        )
+        raise typer.Exit(code=1)
+
+
 def _load_or_exit(config_path: Path) -> HydraTuneConfig:
     try:
         return load_config(config_path)
@@ -98,16 +126,10 @@ def train(config: ConfigOption) -> None:
     """Fine-tune a model as described by the config file."""
     run_config = _load_or_exit(config)
     console.print(_summarize(run_config))
+    _require_training_extras()
 
-    try:
-        # Imported here so the base install works without torch/TRL.
-        from hydratune.training.trainer import run_training
-    except ImportError as exc:
-        error_console.print(
-            f"Training dependencies are not installed ({exc}).\n"
-            'Install them with: pip install "hydratune[train]"'
-        )
-        raise typer.Exit(code=1) from exc
+    # Imported here so the base install works without torch/TRL.
+    from hydratune.training.trainer import run_training
 
     try:
         output_dir = run_training(run_config)
@@ -181,16 +203,10 @@ def export(
     inference time. GGUF conversion is not implemented yet.
     """
     run_config = _load_or_exit(config)
+    _require_training_extras()
 
-    try:
-        # Imported here so the base install works without torch/PEFT.
-        from hydratune.export import merge_adapter
-    except ImportError as exc:
-        error_console.print(
-            f"Export dependencies are not installed ({exc}).\n"
-            'Install them with: pip install "hydratune[train]"'
-        )
-        raise typer.Exit(code=1) from exc
+    # Imported here so the base install works without torch/PEFT.
+    from hydratune.export import merge_adapter
 
     try:
         output_dir = merge_adapter(run_config, adapter_dir=adapter, output_dir=output)

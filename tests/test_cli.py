@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from hydratune import cli
+from hydratune import export as export_pkg
 from hydratune.cli import app
 
 runner = CliRunner()
@@ -76,20 +78,54 @@ def test_validate_rejects_bad_config(tmp_path: Path) -> None:
     assert "dataset" in result.output
 
 
+@pytest.mark.parametrize("command", ["train", "export"])
+def test_missing_training_extras_is_reported_cleanly(
+    command: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A base install must get an install hint, never a traceback.
+
+    The heavy imports live inside functions, so importing trainer/merge
+    succeeds without the extra and the real ImportError would otherwise
+    surface mid-run as an unhandled ModuleNotFoundError.
+    """
+    monkeypatch.setattr(cli, "_missing_training_modules", lambda: ["torch"])
+    config = write_config(tmp_path, "yahma/alpaca-cleaned")
+
+    result = runner.invoke(app, [command, "--config", str(config)])
+    assert result.exit_code == 1
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    assert "Training dependencies are not installed" in result.output
+    assert "hydratune[train]" in result.output
+
+
 def test_export_reports_missing_adapter(tmp_path: Path) -> None:
+    pytest.importorskip("torch")
     config = write_config(tmp_path, "yahma/alpaca-cleaned")
     result = runner.invoke(
         app, ["export", "--config", str(config), "--adapter", str(tmp_path / "nope")]
     )
     assert result.exit_code == 1
-    assert "Adapter directory not found" in result.output or "not installed" in result.output
+    assert "Adapter directory not found" in result.output
 
 
-def test_export_help_lists_flags() -> None:
-    result = runner.invoke(app, ["export", "--help"])
-    assert result.exit_code == 0
-    assert "--adapter" in result.output
-    assert "--output" in result.output
+def test_export_output_flag_is_wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--adapter/--output reach merge_adapter (asserted functionally, not via --help)."""
+    seen: dict[str, Path | None] = {}
+
+    def fake_merge(config: object, adapter_dir: Path | None, output_dir: Path | None) -> Path:
+        seen["adapter"], seen["output"] = adapter_dir, output_dir
+        return Path("/merged")
+
+    monkeypatch.setattr(cli, "_missing_training_modules", list)
+    monkeypatch.setattr(export_pkg, "merge_adapter", fake_merge)
+
+    config = write_config(tmp_path, "yahma/alpaca-cleaned")
+    result = runner.invoke(
+        app,
+        ["export", "--config", str(config), "--adapter", str(tmp_path), "--output", "/out"],
+    )
+    assert result.exit_code == 0, result.output
+    assert seen == {"adapter": tmp_path, "output": Path("/out")}
 
 
 @pytest.mark.parametrize("missing", ["missing.yaml"])
