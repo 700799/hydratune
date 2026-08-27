@@ -1,0 +1,68 @@
+name: Release
+
+# Publishes to PyPI when a version tag is pushed:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Requires a repository secret named PYPI_API_TOKEN (a PyPI API token, the
+# value starting with "pypi-"). The token is only ever read by the publish
+# step; nothing echoes it.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Never ship a tag whose code doesn't pass its own gates.
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: mypy
+      - run: pytest -q
+
+      - name: Verify the tag matches the packaged version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(python -c 'import hydratune; print(hydratune.__version__)')"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match __version__ $pkg"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: |
+          pip install build
+          python -m build
+
+      - name: Check metadata renders on PyPI
+        run: |
+          pip install twine
+          twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # A GitHub Environment gives you an optional manual approval gate before
+    # anything reaches PyPI; a PyPI upload cannot be undone.
+    environment: pypi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}

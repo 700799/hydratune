@@ -7,14 +7,14 @@ name = "hydratune"
 version = "0.1.0"
 description = "YAML-configurable LLM fine-tuning harness built on TRL, PEFT, and Accelerate."
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "HydraTune contributors" }]
 keywords = ["llm", "fine-tuning", "lora", "qlora", "trl", "peft"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -55,6 +55,8 @@ hydratune = "hydratune.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/700799/hydratune"
+Repository = "https://github.com/700799/hydratune"
+Issues = "https://github.com/700799/hydratune/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["hydratune"]

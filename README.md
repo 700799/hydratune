@@ -593,4 +593,4 @@ changes (they are).
 
 ## License
 
-[Apache-2.0](LICENSE)
+[MIT](LICENSE)
