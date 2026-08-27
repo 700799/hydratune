@@ -1,0 +1,50 @@
+# HydraTune smoke-test config: LoRA on SmolLM2-135M-Instruct.
+#
+# Designed to run end-to-end on CPU in seconds (tiny model, 5-row dataset):
+#
+#   python scripts/run_test.py                      # writes the dummy data, trains, saves adapter
+#   hydratune validate --config configs/test_smollm2.yaml
+#   hydratune train    --config configs/test_smollm2.yaml
+
+base_model:
+  name: HuggingFaceTB/SmolLM2-135M-Instruct
+  trust_remote_code: false
+
+dataset:
+  path: data/test_dummy.jsonl       # 5-row dummy set; scripts/run_test.py creates it
+  format: alpaca
+  chat_template: tokenizer_default  # SmolLM2-Instruct ships a ChatML template
+  shuffle: true
+
+training:
+  output_dir: ./output_test_adapter
+  learning_rate: 2.0e-4
+  epochs: 1
+  batch_size: 2
+  gradient_accumulation_steps: 1
+  warmup_steps: 0
+  lr_scheduler: constant
+  optimizer: adamw_torch
+  max_seq_length: 256
+  packing: false                    # 5 tiny rows; packing buys nothing here
+  logging_steps: 1
+  save_steps: 1000                  # never hit; final adapter saved at end of run
+  seed: 42
+  report_to: none
+
+peft:
+  adapter: lora
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+
+hardware:
+  bf16: false                       # float32 keeps the run CPU-portable
+  fp16: false
+  flash_attention: false
+  gradient_checkpointing: false     # not worth it for a 135M model
