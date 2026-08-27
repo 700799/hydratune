@@ -25,6 +25,10 @@ class ChatTemplateError(DatasetError):
     """The dataset format and the tokenizer/chat-template combination are incompatible."""
 
 
+class ExportError(HydraTuneError):
+    """A model/adapter export could not be completed."""
+
+
 class OOMRiskError(HydraTuneError):
     """Training aborted because the GPU ran out of memory (or is about to)."""
 

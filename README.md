@@ -166,7 +166,7 @@ All commands take `--config` / `-c <path>` pointing at a YAML config file.
 | -------------------- | ------- | -------------------------------------------------------------- |
 | `hydratune train`    | working | Run the fine-tuning job described by the config.               |
 | `hydratune validate` | working | Validate the config schema; optionally sample local datasets.  |
-| `hydratune export`   | planned | Merge adapters into the base model; convert to GGUF.           |
+| `hydratune export`   | working | Merge a trained adapter into its base model. (GGUF: planned.) |
 
 ### `hydratune train --config <file>`
 
@@ -188,10 +188,26 @@ parquet files are noted as requiring the training extras.
 
 Exit codes: `0` valid · `1` schema or dataset problems (each listed).
 
-### `hydratune export --config <file>`
+### `hydratune export --config <file> [--adapter DIR] [--output DIR]`
 
-Not implemented yet; exits with code `2` and a message. See
-[Roadmap](#roadmap).
+Merges a trained LoRA/QLoRA adapter into its base model and writes a standalone
+model directory that loads with a plain `AutoModelForCausalLM.from_pretrained` —
+no PEFT needed at inference time.
+
+`--adapter` defaults to `training.output_dir` (where `hydratune train` leaves
+its adapter); `--output` defaults to `<adapter>/merged`. The tokenizer saved
+alongside the adapter is carried over, so an overridden chat template survives
+the merge.
+
+**QLoRA note:** even when the config says `adapter: qlora`, the base model is
+loaded *unquantized* for the merge. Merging LoRA weights into 4-bit NF4 weights
+loses precision, so the merge happens in the config's compute dtype
+(bf16/fp16/fp32) instead.
+
+Exit codes: `0` merged · `1` no `peft` section, missing/invalid adapter
+directory, or missing training extras.
+
+GGUF conversion is not implemented — see [Roadmap](#roadmap).
 
 ### Global flags
 
@@ -427,10 +443,19 @@ The script writes the dummy data, drives the real training pipeline through
 the Pydantic schema, and verifies the adapter artifacts — a quick end-to-end
 health check of the harness itself.
 
+### Train, then ship a standalone model
+
+```bash
+hydratune train  --config example_config.yaml   # writes an adapter
+hydratune export --config example_config.yaml   # merges it into the base model
+# -> outputs/llama3-8b-qlora/merged/  (loads without PEFT)
+```
+
 ### Full fine-tune
 
 Delete the `peft` section. Everything else stays the same; expect an order
-of magnitude more memory.
+of magnitude more memory. (`export` correctly refuses these — there's no
+adapter to merge.)
 
 ### Multi-GPU
 
@@ -505,7 +530,8 @@ hydratune/
 │   │   └── chat_templates.py   # named Jinja chat templates
 │   ├── training/
 │   │   └── trainer.py          # validated config → TRL SFTTrainer (lazy heavy imports)
-│   ├── export/                 # planned: adapter merge + GGUF export
+│   ├── export/
+│   │   └── merge.py            # adapter → merged standalone model (GGUF: planned)
 │   ├── utils/
 │   │   └── errors.py           # HydraTuneError hierarchy (ConfigError, DatasetError, OOMRiskError, ...)
 │   └── py.typed                # PEP 561: downstream users get our types
@@ -559,8 +585,8 @@ changes (they are).
 
 ## Roadmap
 
-- `hydratune export`: merge LoRA adapters into the base model; GGUF
-  conversion for llama.cpp-compatible runtimes.
+- GGUF conversion for llama.cpp-compatible runtimes (adapter merging already
+  ships; GGUF needs llama.cpp's converter, which is not a pip dependency).
 - Preference tuning (DPO/ORPO) as additional trainer backends.
 - FSDP / DeepSpeed configuration passthrough in the `hardware` section.
 - Weights & Biases run configuration beyond `report_to`.

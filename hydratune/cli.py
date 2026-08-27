@@ -152,14 +152,52 @@ def validate(
 
 
 @app.command()
-def export(config: ConfigOption) -> None:
-    """(Planned) Merge adapters into the base model and export to GGUF."""
-    _load_or_exit(config)
-    error_console.print(
-        "hydratune export is not implemented yet; adapter merging and GGUF "
-        "conversion are tracked for an upcoming release."
-    )
-    raise typer.Exit(code=2)
+def export(
+    config: ConfigOption,
+    adapter: Annotated[
+        Path | None,
+        typer.Option(
+            "--adapter",
+            "-a",
+            help="Adapter directory to merge; defaults to training.output_dir.",
+            dir_okay=True,
+            file_okay=False,
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Where to write the merged model; defaults to <adapter>/merged.",
+            dir_okay=True,
+            file_okay=False,
+        ),
+    ] = None,
+) -> None:
+    """Merge a trained LoRA/QLoRA adapter into its base model.
+
+    The result loads with a plain AutoModelForCausalLM — no PEFT required at
+    inference time. GGUF conversion is not implemented yet.
+    """
+    run_config = _load_or_exit(config)
+
+    try:
+        # Imported here so the base install works without torch/PEFT.
+        from hydratune.export import merge_adapter
+    except ImportError as exc:
+        error_console.print(
+            f"Export dependencies are not installed ({exc}).\n"
+            'Install them with: pip install "hydratune[train]"'
+        )
+        raise typer.Exit(code=1) from exc
+
+    try:
+        output_dir = merge_adapter(run_config, adapter_dir=adapter, output_dir=output)
+    except HydraTuneError as exc:
+        error_console.print(str(exc))
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]Merge complete.[/green] Merged model saved to {output_dir}")
 
 
 if __name__ == "__main__":

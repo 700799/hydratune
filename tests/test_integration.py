@@ -22,8 +22,9 @@ tokenizers = pytest.importorskip("tokenizers")
 pytest.importorskip("datasets")
 
 from hydratune.config.schema import HydraTuneConfig  # noqa: E402
+from hydratune.export.merge import merge_adapter  # noqa: E402
 from hydratune.training.trainer import run_training  # noqa: E402
-from hydratune.utils.errors import ChatTemplateError  # noqa: E402
+from hydratune.utils.errors import ChatTemplateError, ExportError  # noqa: E402
 
 CORPUS = [
     "What is the capital of France? The capital of France is Paris.",
@@ -149,6 +150,52 @@ def test_training_with_eval_split_and_warmup_ratio(
     )
     output_dir = run_training(config)
     assert (output_dir / "adapter_model.safetensors").is_file()
+
+
+def test_merge_produces_standalone_model_with_changed_weights(
+    tiny_model_dir: Path, dataset_file: Path, tmp_path: Path
+) -> None:
+    """Train an adapter, merge it, and prove the merge actually applied."""
+    adapter_dir = tmp_path / "adapter"
+    config = make_config(tiny_model_dir, dataset_file, adapter_dir)
+    run_training(config)
+
+    merged_dir = merge_adapter(config)
+    assert merged_dir == adapter_dir / "merged"
+
+    # The merged model must load without PEFT in the picture.
+    merged = transformers.AutoModelForCausalLM.from_pretrained(str(merged_dir))
+    base = transformers.AutoModelForCausalLM.from_pretrained(str(tiny_model_dir))
+    assert (merged_dir / "config.json").is_file()
+    assert (merged_dir / "tokenizer_config.json").is_file()
+
+    # A LoRA target module's weights must differ from the base; an unadapted
+    # module (the LM head is not in target_modules) must be untouched. Together
+    # these show the merge applied the adapter rather than copying the base.
+    merged_state, base_state = merged.state_dict(), base.state_dict()
+    q_proj_key = "model.layers.0.self_attn.q_proj.weight"
+    assert not torch.equal(merged_state[q_proj_key], base_state[q_proj_key])
+    head_key = "model.embed_tokens.weight"
+    assert torch.equal(merged_state[head_key], base_state[head_key])
+
+
+def test_merge_rejects_directory_without_adapter(
+    tiny_model_dir: Path, dataset_file: Path, tmp_path: Path
+) -> None:
+    empty = tmp_path / "not-an-adapter"
+    empty.mkdir()
+    config = make_config(tiny_model_dir, dataset_file, tmp_path / "unused")
+    with pytest.raises(ExportError, match="does not look like a PEFT adapter"):
+        merge_adapter(config, adapter_dir=empty)
+
+
+def test_merge_requires_a_peft_section(
+    tiny_model_dir: Path, dataset_file: Path, tmp_path: Path
+) -> None:
+    config = make_config(tiny_model_dir, dataset_file, tmp_path / "out")
+    full_finetune = config.model_dump(exclude={"torch_dtype", "peft"})
+    with pytest.raises(ExportError, match="no 'peft' section"):
+        merge_adapter(HydraTuneConfig.model_validate(full_finetune))
 
 
 def test_tokenizer_default_without_template_fails_fast(

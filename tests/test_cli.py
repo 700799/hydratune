@@ -76,11 +76,20 @@ def test_validate_rejects_bad_config(tmp_path: Path) -> None:
     assert "dataset" in result.output
 
 
-def test_export_is_a_stub(tmp_path: Path) -> None:
+def test_export_reports_missing_adapter(tmp_path: Path) -> None:
     config = write_config(tmp_path, "yahma/alpaca-cleaned")
-    result = runner.invoke(app, ["export", "--config", str(config)])
-    assert result.exit_code == 2
-    assert "not implemented" in result.output
+    result = runner.invoke(
+        app, ["export", "--config", str(config), "--adapter", str(tmp_path / "nope")]
+    )
+    assert result.exit_code == 1
+    assert "Adapter directory not found" in result.output or "not installed" in result.output
+
+
+def test_export_help_lists_flags() -> None:
+    result = runner.invoke(app, ["export", "--help"])
+    assert result.exit_code == 0
+    assert "--adapter" in result.output
+    assert "--output" in result.output
 
 
 @pytest.mark.parametrize("missing", ["missing.yaml"])
