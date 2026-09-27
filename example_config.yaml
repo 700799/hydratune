@@ -1,0 +1,60 @@
+# HydraTune example: QLoRA fine-tuning of Llama-3-8B on Alpaca-style data.
+#
+#   hydratune validate --config example_config.yaml
+#   hydratune train    --config example_config.yaml
+#
+# Fits on a single 24 GB GPU (e.g. RTX 4090) with the settings below.
+
+base_model:
+  name: meta-llama/Meta-Llama-3-8B
+  trust_remote_code: false
+
+dataset:
+  path: yahma/alpaca-cleaned        # Hub id, or a local .jsonl/.json/.csv file
+  format: alpaca                    # instruction / input / output records
+  chat_template: llama3             # render turns with the Llama-3 template
+  split: train
+  validation_split: 0.02            # hold out 2% for eval
+  shuffle: true
+
+training:
+  output_dir: ./outputs/llama3-8b-qlora
+  learning_rate: 2.0e-4
+  epochs: 3
+  batch_size: 2                     # micro batch per device
+  gradient_accumulation_steps: 8    # effective batch = 16 per device
+  warmup_steps: 100
+  lr_scheduler: cosine
+  optimizer: paged_adamw_8bit       # paged optimizer pairs well with QLoRA
+  weight_decay: 0.01
+  max_seq_length: 4096
+  packing: true
+  logging_steps: 10
+  save_steps: 250
+  eval_steps: 250
+  save_total_limit: 3
+  seed: 42
+  report_to: none
+
+peft:
+  adapter: qlora                    # 4-bit base model + LoRA adapters
+  r: 32
+  lora_alpha: 16
+  lora_dropout: 0.05
+  target_modules:                   # all attention + MLP projections
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  quantization:
+    bnb_4bit_quant_type: nf4
+    bnb_4bit_use_double_quant: true
+
+hardware:
+  bf16: true                        # Ampere+ GPUs; use fp16 on older cards
+  fp16: false
+  flash_attention: true             # requires the flash-attn package
+  gradient_checkpointing: true
